@@ -1,0 +1,184 @@
+{
+  "id": "toggee_monthly_narrative_sample",
+  "version": 1,
+  "audio": {
+    "uri": "asset://audio/bgm.mp3",
+    "duration": 48.0,
+    "note": "Use bundled bgm.mp3 as master clock. Track is longer than 48s; stop/end at timeline end."
+  },
+  "timeline": [
+    {
+      "id": "seg_01_welcome",
+      "type": "title_card",
+      "startTime": 0.0,
+      "duration": 3.0,
+      "payload": {
+        "title": "August Memories",
+        "subtitle": "Your incredible journey this month",
+        "theme": "sunset_orange",
+        "animation": "fade_in_up"
+      },
+      "transition": { "type": "fade", "duration": 0.5 }
+    },
+    {
+      "id": "seg_02_task",
+      "type": "action_task_complete",
+      "startTime": 3.0,
+      "duration": 4.0,
+      "payload": {
+        "taskName": "Clean up the backyard soccer field",
+        "completedAt": "2026-08-12T15:30:00Z",
+        "rewardAmount": 15,
+        "rewardUnit": "tbux",
+        "iconUri": "asset://images/task_icon.png",
+        "animation": "check_pop"
+      },
+      "transition": { "type": "slide_left", "duration": 0.4 }
+    },
+    {
+      "id": "seg_03_toggee_levelup",
+      "type": "action_toggee_upgrade",
+      "startTime": 7.0,
+      "duration": 4.5,
+      "payload": {
+        "toggeeName": "Pip",
+        "oldLevel": 4,
+        "newLevel": 5,
+        "rewardTbux": 100,
+        "imageUri": "asset://images/toggee_happy.png",
+        "animation": "scale_bounce",
+        "optionalSfxUri": "asset://audio/sfx_reward.mp3"
+      },
+      "transition": { "type": "fade", "duration": 0.4 }
+    },
+    {
+      "id": "seg_04_buy_btc",
+      "type": "action_btc_purchase",
+      "startTime": 11.5,
+      "duration": 4.0,
+      "payload": {
+        "fiatAmount": 50,
+        "fiatCurrency": "USD",
+        "btcAcquired": 0.00085,
+        "goldseedEarned": 2,
+        "currentSavingProgress": 85,
+        "iconUri": "asset://images/icon_btc.png",
+        "animation": "progress_fill"
+      },
+      "transition": { "type": "slide_left", "duration": 0.4 }
+    },
+    {
+      "id": "seg_05_friends",
+      "type": "action_friend_connect",
+      "startTime": 15.5,
+      "duration": 4.0,
+      "payload": {
+        "newFriendsCount": 3,
+        "friends": [
+          { "name": "Emma", "avatarUri": "asset://images/avatar_1.png" },
+          { "name": "Noah", "avatarUri": "asset://images/avatar_2.png" },
+          { "name": "Sophia", "avatarUri": "asset://images/avatar_3.png" }
+        ],
+        "message": "Your network is expanding!",
+        "animation": "avatar_stagger_in"
+      },
+      "transition": { "type": "slide_right", "duration": 0.4 }
+    },
+    {
+      "id": "seg_06_star_reward",
+      "type": "action_guardian_reward_star",
+      "startTime": 19.5,
+      "duration": 3.5,
+      "payload": {
+        "starsAwarded": 5,
+        "starsReason": "Helping Mom prepare Sunday Family Dinner",
+        "sender": "Mom (Jane)",
+        "animation": "star_count_up"
+      },
+      "transition": { "type": "fade", "duration": 0.35 }
+    },
+    {
+      "id": "seg_07_star_deduct",
+      "type": "action_guardian_deduct_star",
+      "startTime": 23.0,
+      "duration": 3.0,
+      "payload": {
+        "starsDeducted": 1,
+        "deductReason": "Forgetting to feed Pip for 24 hours",
+        "sender": "Dad (Mark)",
+        "tone": "gentle_warning",
+        "animation": "shake_soft"
+      },
+      "transition": { "type": "fade", "duration": 0.35 }
+    },
+    {
+      "id": "seg_08_photo_cluster",
+      "type": "action_photo_cluster",
+      "startTime": 26.0,
+      "duration": 5.0,
+      "payload": {
+        "photos": [
+          "asset://images/photo_01.png",
+          "asset://images/photo_02.png",
+          "asset://images/photo_03.png"
+        ],
+        "caption": "Looks like you had an amazing backyard safari!",
+        "animation": "crossfade_slideshow"
+      },
+      "transition": { "type": "fade", "duration": 0.4 }
+    },
+    {
+      "id": "seg_09_video_broken",
+      "type": "video_clip",
+      "startTime": 31.0,
+      "duration": 6.0,
+      "url": "https://broken-cdn.toggee.invalid/error-user-video-clip.mp4",
+      "payload": {
+        "hasAudio": true,
+        "videoVolume": 0.3,
+        "placeholderUri": "asset://images/photo_02.png",
+        "note": "INTENDED FAILURE: must fall back to placeholder without stalling the master clock"
+      },
+      "transition": { "type": "fade", "duration": 0.5 }
+    },
+    {
+      "id": "seg_10_video_ok",
+      "type": "video_clip",
+      "startTime": 37.0,
+      "duration": 5.5,
+      "url": "asset://video/clip_ok.mp4",
+      "payload": {
+        "hasAudio": false,
+        "videoVolume": 0,
+        "animation": "ken_burns_light"
+      },
+      "transition": { "type": "fade", "duration": 0.4 }
+    },
+    {
+      "id": "seg_11_interactions",
+      "type": "action_toggee_interaction_summary",
+      "startTime": 42.5,
+      "duration": 3.0,
+      "payload": {
+        "period": "August",
+        "counts": { "hug": 42, "feed": 28, "toilet": 15, "shower": 12 },
+        "achievementUnlocked": "Pip's Best Caring Partner",
+        "animation": "bars_rise"
+      },
+      "transition": { "type": "fade", "duration": 0.4 }
+    },
+    {
+      "id": "seg_12_outro",
+      "type": "outro_card",
+      "startTime": 45.5,
+      "duration": 2.5,
+      "payload": {
+        "footerText": "Toggee — Grow Wealth, Grow Happy",
+        "imageUri": "asset://images/reward.png",
+        "optionalSfxUri": "asset://audio/sfx_finish.mp3",
+        "animation": "fade_in"
+      },
+      "transition": { "type": "fade", "duration": 0.6 }
+    }
+  ]
+}
