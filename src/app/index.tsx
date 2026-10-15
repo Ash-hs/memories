@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View,
   useWindowDimensions, type GestureResponderEvent,
 } from "react-native";
 import { Canvas, Group, Picture } from "react-native-skia";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { exportFrame, shareFrame } from "../memories/exportFrame";
+import { ExportCancelledError } from "../memories/exportSequence";
+import { exportVideo, shareVideo, type ExportProgress } from "../memories/exportVideo";
 import { manifest, segmentLabels } from "../memories/pack";
 import { FRAME, pictureAt } from "../memories/render";
 import { clamp, evaluateTimeline, formatTime } from "../memories/timeline";
@@ -15,8 +17,24 @@ export default function Index() {
   const memories = useMemories();
   const { width, height } = useWindowDimensions();
   const [trackWidth, setTrackWidth] = useState(1);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
   const [exported, setExported] = useState<number | null>(null);
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [videoMessage, setVideoMessage] = useState<string | null>(null);
+  const exportBusy = useRef(false);
+  const exportController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") exportController.current?.abort();
+    });
+    return () => {
+      mounted.current = false;
+      exportController.current?.abort();
+      subscription.remove();
+    };
+  }, []);
   const previewWidth = Math.min(width - 48, 360, Math.max(220, (height - 380) / 1.5));
   const previewHeight = previewWidth * 1.5;
   const picture = useMemo(
@@ -34,9 +52,10 @@ export default function Index() {
     memories.scrubTo(clamp(event.nativeEvent.locationX / trackWidth) * manifest.audio.duration);
   };
   const handleExport = async () => {
-    if (!memories.media) return;
+    if (!memories.media || exportBusy.current) return;
+    exportBusy.current = true;
     memories.pause();
-    setExporting(true);
+    setExporting("png");
     const time = memories.time;
     try {
       const uri = await exportFrame(time, memories.media);
@@ -46,7 +65,42 @@ export default function Index() {
       memories.report(error);
       Alert.alert("导出 / 分享失败", error instanceof Error ? error.message : String(error));
     } finally {
-      setExporting(false);
+      exportBusy.current = false;
+      if (mounted.current) setExporting(null);
+    }
+  };
+  const handleVideoExport = async () => {
+    if (!memories.media || exportBusy.current) return;
+    exportBusy.current = true;
+    const controller = new AbortController();
+    exportController.current = controller;
+    memories.pause();
+    setExporting("mp4");
+    setProgress(null);
+    setVideoMessage(null);
+    try {
+      const uri = await exportVideo(memories.media, controller.signal, (value) => {
+        if (mounted.current) setProgress(value);
+      });
+      exportController.current = null;
+      if (!mounted.current) return;
+      setVideoMessage("MP4 已保存到应用 Documents，可再次导出并分享。");
+      setProgress({ stage: "sharing", completed: 1440, total: 1440 });
+      await shareVideo(uri);
+    } catch (error) {
+      if (error instanceof ExportCancelledError) {
+        if (mounted.current) setVideoMessage("视频导出已取消，临时文件已清理。");
+      } else {
+        memories.report(error);
+        if (mounted.current) Alert.alert("视频导出 / 分享失败", error instanceof Error ? error.message : String(error));
+      }
+    } finally {
+      exportController.current = null;
+      exportBusy.current = false;
+      if (mounted.current) {
+        setExporting(null);
+        setProgress(null);
+      }
     }
   };
 
@@ -88,7 +142,9 @@ export default function Index() {
           accessibilityRole="adjustable"
           accessibilityValue={{ min: 0, max: 48, now: Math.round(memories.time), text: `${memories.time.toFixed(1)} 秒` }}
           accessibilityActions={[{ name: "increment", label: "前进一秒" }, { name: "decrement", label: "后退一秒" }]}
-          onAccessibilityAction={(event) => memories.seek(memories.time + (event.nativeEvent.actionName === "increment" ? 1 : -1))}
+          onAccessibilityAction={(event) => {
+            if (memories.ready && !memories.seeking && !exporting) memories.seek(memories.time + (event.nativeEvent.actionName === "increment" ? 1 : -1));
+          }}
           style={styles.scrubber}
           onLayout={(event) => setTrackWidth(event.nativeEvent.layout.width)}
           onStartShouldSetResponder={() => memories.ready && !memories.seeking && !exporting}
@@ -109,20 +165,41 @@ export default function Index() {
         </View>
 
         <View style={styles.controls}>
-          <Pressable accessibilityRole="button" accessibilityLabel="回到开头" disabled={!memories.ready || memories.seeking || exporting}
+          <Pressable accessibilityRole="button" accessibilityLabel="回到开头" disabled={!memories.ready || memories.seeking || !!exporting}
             onPress={() => memories.seek(0)} style={styles.secondary}>
             <Text style={styles.secondaryText}>重播</Text>
           </Pressable>
           <Pressable testID="play-button" accessibilityRole="button" accessibilityLabel={memories.status.playing ? "暂停" : "播放"}
-            disabled={!memories.ready || memories.seeking || exporting} onPress={() => void memories.toggle()}
+            disabled={!memories.ready || memories.seeking || !!exporting} onPress={() => void memories.toggle()}
             style={[styles.play, (!memories.ready || memories.seeking || exporting) && styles.disabled]}>
             <Text style={styles.playText}>{memories.seeking ? "对齐中…" : !memories.ready ? "准备音轨…" : memories.status.playing ? "暂停" : memories.time >= 48 ? "再看一次" : "播放回顾"}</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" disabled={!memories.ready || memories.seeking || exporting}
+          <Pressable accessibilityRole="button" disabled={!memories.ready || memories.seeking || !!exporting}
             onPress={handleExport} style={styles.secondary}>
-            <Text style={styles.secondaryText}>{exporting ? "导出中" : "分享帧"}</Text>
+            <Text style={styles.secondaryText}>{exporting === "png" ? "导出中" : "分享帧"}</Text>
           </Pressable>
         </View>
+        <View style={styles.videoExport}>
+          <Pressable testID="export-mp4-button" accessibilityRole="button"
+            disabled={!memories.ready || memories.preparingVideo || memories.seeking || !!exporting || Platform.OS !== "ios"}
+            onPress={handleVideoExport}
+            style={[styles.play, (!memories.ready || memories.preparingVideo || memories.seeking || !!exporting || Platform.OS !== "ios") && styles.disabled]}>
+            <Text style={styles.playText}>{exporting === "mp4"
+              ? progress?.stage === "sharing" ? "已保存，分享中…" : progress?.stage === "audio" ? "正在合成背景音乐…" : `正在导出 ${Math.floor((progress?.completed ?? 0) / (progress?.total ?? 1440) * 100)}%`
+              : "导出完整 MP4"}</Text>
+          </Pressable>
+          {exporting === "mp4" && progress?.stage !== "sharing" && (
+            <Pressable accessibilityRole="button" accessibilityLabel="取消视频导出"
+              onPress={() => exportController.current?.abort()} style={styles.secondary}>
+              <Text style={styles.secondaryText}>取消</Text>
+            </Pressable>
+          )}
+        </View>
+        <Text accessibilityLiveRegion="polite" style={styles.note}>
+          {videoMessage ?? (Platform.OS !== "ios" ? "MP4 导出暂仅支持 iOS；仍可分享 PNG。" : exporting === "mp4"
+            ? "正在本地离线编码，请保持应用在前台；离开应用将取消导出。"
+            : memories.preparingVideo ? "视频素材准备完成后可导出完整 MP4。" : "720×1080 · 30 fps · 48 秒 · 含背景音乐")}
+        </Text>
         <View style={styles.statusBox}>
           <View style={styles.statusRow}>
             <View style={styles.dot} />
@@ -142,7 +219,7 @@ export default function Index() {
           {manifest.timeline.map((segment, index) => (
             <Pressable key={segment.id} accessibilityRole="button"
               accessibilityLabel={`跳到${segmentLabels[segment.type]}，${segment.startTime}秒`}
-              disabled={!memories.ready || memories.seeking || exporting}
+              disabled={!memories.ready || memories.seeking || !!exporting}
               onPress={() => memories.seek(segment.startTime + Math.min(0.7, segment.duration / 2))}
               style={[styles.chapter, current?.id === segment.id && styles.activeChapter]}>
               <Text style={styles.chapterNumber}>{String(index + 1).padStart(2, "0")} / {formatTime(segment.startTime)}</Text>
@@ -152,9 +229,9 @@ export default function Index() {
         </ScrollView>
         <Pressable accessibilityRole="button" style={styles.exportNote} onPress={() => Alert.alert(
           "关于导出",
-          "当前可将任意时刻用同一 Skia 渲染器离屏导出为 720×1080 PNG 并分享；不是 MP4。\n\n完整 MP4 路径：按 t = n/fps 取帧 → iOS AVAssetWriter 编码 H.264 → 裁切并混合音轨 → 系统分享。此 demo 未实现视频编码，也不使用服务端渲染。详细取舍见 README。",
+          "分享帧：保存当前时刻的 720×1080 PNG。\n\n完整 MP4：iOS 使用同一 Skia 渲染器按 t = n/30 离屏生成 1440 帧，本地编码 H.264 并合入裁切至 48 秒的背景音乐，再打开系统分享。保留坏链照片占位与预览的 12 fps 原视频帧；不含额外音效，也不使用服务端。\n\n新增原生模块后需要重新构建开发客户端。导出期间请保持前台，可随时取消。",
         )}>
-          <Text style={styles.note}>{exported !== null ? `已保存 ${exported.toFixed(2)} 秒画面。` : "原始瞬间，不做 AI 改图。"} 当前导出为 PNG，非 MP4。查看取舍 →</Text>
+          <Text style={styles.note}>{exported !== null ? `已保存 ${exported.toFixed(2)} 秒 PNG 画面。` : "原始瞬间，不做 AI 改图。"} 查看 PNG / MP4 导出说明 →</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -181,6 +258,7 @@ const styles = StyleSheet.create({
   tick: { position: "absolute", top: 0, width: 1, height: 5, backgroundColor: "#f6f3ed" },
   thumb: { position: "absolute", top: -6, marginLeft: -8, width: 17, height: 17, borderRadius: 9, backgroundColor: "#547560", borderWidth: 3, borderColor: "#f6f3ed" },
   controls: { flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 5 },
+  videoExport: { flexDirection: "row", gap: 12, alignItems: "center" },
   play: { flex: 1, alignItems: "center", padding: 14, borderRadius: 25, backgroundColor: "#547560" },
   playText: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
   disabled: { opacity: 0.45 },
