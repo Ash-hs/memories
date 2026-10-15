@@ -33,6 +33,18 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      "expo-audio",
+      "expo-video",
+      "expo-sharing",
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "usePrecompiledModules": true
+          }
+        }
       ]
     ],
     "experiments": {
