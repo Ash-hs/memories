@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator, Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View,
   useWindowDimensions, type GestureResponderEvent,
 } from "react-native";
 import { Canvas, Group, Picture } from "react-native-skia";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ActionButton } from "../memories/ActionButton";
 import { exportFrame, shareFrame } from "../memories/exportFrame";
 import { ExportCancelledError } from "../memories/exportSequence";
 import { exportVideo, shareVideo, type ExportProgress } from "../memories/exportVideo";
@@ -15,6 +16,7 @@ import { useMemories } from "../memories/useMemories";
 
 export default function Index() {
   const memories = useMemories();
+  const { media, pause, report } = memories;
   const { width, height } = useWindowDimensions();
   const [trackWidth, setTrackWidth] = useState(1);
   const [exporting, setExporting] = useState<"png" | "mp4" | null>(null);
@@ -69,17 +71,17 @@ export default function Index() {
       if (mounted.current) setExporting(null);
     }
   };
-  const handleVideoExport = async () => {
-    if (!memories.media || exportBusy.current) return;
+  const handleVideoExport = useCallback(async () => {
+    if (!media || exportBusy.current) return;
     exportBusy.current = true;
     const controller = new AbortController();
     exportController.current = controller;
-    memories.pause();
+    pause();
     setExporting("mp4");
     setProgress(null);
     setVideoMessage(null);
     try {
-      const uri = await exportVideo(memories.media, controller.signal, (value) => {
+      const uri = await exportVideo(media, controller.signal, (value) => {
         if (mounted.current) setProgress(value);
       });
       exportController.current = null;
@@ -91,7 +93,7 @@ export default function Index() {
       if (error instanceof ExportCancelledError) {
         if (mounted.current) setVideoMessage("视频导出已取消，临时文件已清理。");
       } else {
-        memories.report(error);
+        report(error);
         if (mounted.current) Alert.alert("视频导出 / 分享失败", error instanceof Error ? error.message : String(error));
       }
     } finally {
@@ -102,7 +104,7 @@ export default function Index() {
         setProgress(null);
       }
     }
-  };
+  }, [media, pause, report]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -169,25 +171,23 @@ export default function Index() {
             onPress={() => memories.seek(0)} style={styles.secondary}>
             <Text style={styles.secondaryText}>重播</Text>
           </Pressable>
-          <Pressable testID="play-button" accessibilityRole="button" accessibilityLabel={memories.status.playing ? "暂停" : "播放"}
-            disabled={!memories.ready || memories.seeking || !!exporting} onPress={() => void memories.toggle()}
-            style={[styles.play, (!memories.ready || memories.seeking || exporting) && styles.disabled]}>
-            <Text style={styles.playText}>{memories.seeking ? "对齐中…" : !memories.ready ? "准备音轨…" : memories.status.playing ? "暂停" : memories.time >= 48 ? "再看一次" : "播放回顾"}</Text>
-          </Pressable>
+          <ActionButton testID="play-button" accessibilityLabel={memories.playing ? "暂停" : "播放"}
+            disabled={!memories.ready || memories.seeking || !!exporting}
+            dimmed={!memories.ready || !!exporting} onPress={memories.toggle}
+            label={!memories.ready ? "准备音轨…" : memories.playing ? "暂停" : memories.time >= 48 ? "再看一次" : "播放回顾"} />
           <Pressable accessibilityRole="button" disabled={!memories.ready || memories.seeking || !!exporting}
             onPress={handleExport} style={styles.secondary}>
             <Text style={styles.secondaryText}>{exporting === "png" ? "导出中" : "分享帧"}</Text>
           </Pressable>
         </View>
         <View style={styles.videoExport}>
-          <Pressable testID="export-mp4-button" accessibilityRole="button"
+          <ActionButton testID="export-mp4-button"
             disabled={!memories.ready || memories.preparingVideo || memories.seeking || !!exporting || Platform.OS !== "ios"}
             onPress={handleVideoExport}
-            style={[styles.play, (!memories.ready || memories.preparingVideo || memories.seeking || !!exporting || Platform.OS !== "ios") && styles.disabled]}>
-            <Text style={styles.playText}>{exporting === "mp4"
+            dimmed={!memories.ready || memories.preparingVideo || !!exporting || Platform.OS !== "ios"}
+            label={exporting === "mp4"
               ? progress?.stage === "sharing" ? "已保存，分享中…" : progress?.stage === "audio" ? "正在合成背景音乐…" : `正在导出 ${Math.floor((progress?.completed ?? 0) / (progress?.total ?? 1440) * 100)}%`
-              : "导出完整 MP4"}</Text>
-          </Pressable>
+              : "导出完整 MP4"} />
           {exporting === "mp4" && progress?.stage !== "sharing" && (
             <Pressable accessibilityRole="button" accessibilityLabel="取消视频导出"
               onPress={() => exportController.current?.abort()} style={styles.secondary}>
@@ -259,9 +259,6 @@ const styles = StyleSheet.create({
   thumb: { position: "absolute", top: -6, marginLeft: -8, width: 17, height: 17, borderRadius: 9, backgroundColor: "#547560", borderWidth: 3, borderColor: "#f6f3ed" },
   controls: { flexDirection: "row", gap: 12, alignItems: "center", marginBottom: 5 },
   videoExport: { flexDirection: "row", gap: 12, alignItems: "center" },
-  play: { flex: 1, alignItems: "center", padding: 14, borderRadius: 25, backgroundColor: "#547560" },
-  playText: { color: "#ffffff", fontWeight: "600", fontSize: 15 },
-  disabled: { opacity: 0.45 },
   secondary: { paddingVertical: 14, paddingHorizontal: 9 },
   secondaryText: { color: "#547560", fontSize: 14 },
   statusBox: { backgroundColor: "#eeebe3", padding: 12, borderRadius: 12, gap: 5 },

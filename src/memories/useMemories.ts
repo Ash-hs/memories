@@ -13,6 +13,7 @@ export function useMemories() {
   const [audioReady, setAudioReady] = useState(false);
   const [time, setTime] = useState(0);
   const [seeking, setSeeking] = useState(false);
+  const [scrubPlayback, setScrubPlayback] = useState<boolean | null>(null);
   const [preparingVideo, setPreparingVideo] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const scrubbing = useRef(false);
@@ -26,6 +27,12 @@ export function useMemories() {
     console.error("[Memories]", cause);
     if (mounted.current) setError(errorMessage(cause));
   }, []);
+
+  const pause = useCallback(() => {
+    resumeAfterSeek.current = false;
+    setScrubPlayback(null);
+    player.pause();
+  }, [player]);
 
   useEffect(() => {
     mounted.current = true;
@@ -71,19 +78,26 @@ export function useMemories() {
     }).catch(report);
     const subscription = AppState.addEventListener("change", (state) => {
       if (state !== "active") {
-        resumeAfterSeek.current = false;
-        player.pause();
+        pause();
       }
     });
     return () => {
       cancelled = true;
       subscription.remove();
     };
-  }, [player, report]);
+  }, [pause, report]);
 
   useEffect(() => {
     if (status.error) report(new Error(`Background audio: ${status.error}`));
   }, [status.error, report]);
+
+  useEffect(() => {
+    // Keep the pre-scrub label until native playback confirms the resumed state.
+    if (!scrubbing.current && !seeking &&
+      (status.playing === scrubPlayback || status.didJustFinish || status.error)) {
+      setScrubPlayback(null);
+    }
+  }, [seeking, status.playing, status.didJustFinish, status.error, scrubPlayback]);
 
   useEffect(() => {
     let animation: number;
@@ -107,7 +121,10 @@ export function useMemories() {
 
   const beginScrub = useCallback(() => {
     seekGeneration.current += 1;
-    if (!scrubbing.current) resumeAfterSeek.current = player.playing;
+    if (!scrubbing.current) {
+      resumeAfterSeek.current = player.playing;
+      setScrubPlayback(player.playing);
+    }
     scrubbing.current = true;
     draftTime.current = clamp(player.currentTime, 0, manifest.audio.duration);
     player.pause();
@@ -130,7 +147,9 @@ export function useMemories() {
         if (!mounted.current || generation !== seekGeneration.current) return;
         setTime(clamp(player.currentTime, 0, manifest.audio.duration));
         if (resumeAfterSeek.current && target < manifest.audio.duration) player.play();
+        else setScrubPlayback(false);
       } catch (cause) {
+        if (mounted.current && generation === seekGeneration.current) setScrubPlayback(null);
         report(cause);
       } finally {
         if (mounted.current && generation === seekGeneration.current) {
@@ -159,8 +178,9 @@ export function useMemories() {
 
   return {
     media, mediaVersion, time, status, seeking, preparingVideo, error,
+    playing: scrubPlayback ?? status.playing,
     ready: audioReady && status.isLoaded && media !== null,
     beginScrub, scrubTo, endScrub, seek, toggle, report,
-    pause: () => player.pause(),
+    pause,
   };
 }
